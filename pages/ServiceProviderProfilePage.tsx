@@ -1,33 +1,64 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getProviderById } from '../services/dataService';
+import { getProviderById, getFavoriteProviderIdsForCustomer, addFavoriteProvider, removeFavoriteProvider } from '../services/dataService';
 import { ServiceProvider, Review, Service } from '../types';
 import Spinner from '../components/Spinner';
 import StarRating from '../components/StarRating';
 import Button from '../components/Button';
+import { useAuth } from '../contexts/AuthContext';
+import VettingBadges from '../components/VettingBadges';
 
 const ServiceProviderProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { user, isAuthenticated } = useAuth();
   const [provider, setProvider] = useState<ServiceProvider | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (id) {
-        setLoading(true);
-        try {
-          const prov = await getProviderById(id);
-          setProvider(prov || null);
-        } catch (error) {
-          console.error("Failed to fetch provider:", error);
-        } finally {
-          setLoading(false);
+      if (!id) return;
+      setLoading(true);
+      try {
+        const prov = await getProviderById(id);
+        setProvider(prov || null);
+
+        if (user && user.role === 'customer' && prov) {
+          const favoriteIds = await getFavoriteProviderIdsForCustomer(user.id);
+          setIsFavorite(favoriteIds.includes(prov.id));
         }
+      } catch (error) {
+        console.error("Failed to fetch provider:", error);
+      } finally {
+        setLoading(false);
       }
     };
     fetchData();
-  }, [id]);
+  }, [id, user]);
+
+  const handleToggleFavorite = async () => {
+    if (!user || user.role !== 'customer' || !provider) return;
+
+    if (isFavorite) {
+      await removeFavoriteProvider(user.id, provider.id);
+    } else {
+      await addFavoriteProvider(user.id, provider.id);
+    }
+    setIsFavorite(!isFavorite);
+  };
+
+  const renderPrice = (service: Service) => {
+    switch(service.pricingModel) {
+        case 'Hourly':
+            return <span className="font-bold text-primary">${service.startingPrice}/hr</span>;
+        case 'Quote':
+            return <span className="font-semibold text-secondary">By Quote</span>;
+        case 'Fixed':
+        default:
+             return <span className="font-bold text-primary">from ${service.startingPrice}</span>;
+    }
+  };
 
   if (loading) {
     return <Spinner />;
@@ -43,14 +74,27 @@ const ServiceProviderProfilePage: React.FC = () => {
       <div className="flex flex-col md:flex-row items-start gap-8 mb-8">
         <img src={provider.photoUrl} alt={provider.name} className="w-32 h-32 rounded-full object-cover border-4 border-primary" />
         <div className="flex-1">
-          <h1 className="text-4xl font-bold text-dark">{provider.businessName}</h1>
-          <p className="text-lg text-secondary">{provider.name} - {provider.category}</p>
-          <div className="mt-2">
+          <div className="flex justify-between items-start">
+            <h1 className="text-4xl font-bold text-dark">{provider.businessName}</h1>
+            {isAuthenticated && user?.role === 'customer' && (
+              <button onClick={handleToggleFavorite} className="p-2 rounded-full hover:bg-red-100 transition-colors" aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
+                  <i className={`fa-heart text-2xl ${isFavorite ? 'fas text-danger' : 'far text-gray-400'}`}></i>
+              </button>
+            )}
+          </div>
+          <p className="text-lg text-secondary mb-2">{provider.name} - {provider.category}</p>
+          <div className="mb-2">
             <StarRating rating={provider.rating} />
           </div>
-          <div className="mt-4 flex flex-wrap gap-4">
+          <div className="mb-4">
+            <VettingBadges status={provider.vettingStatus} />
+          </div>
+          <div className="flex flex-wrap gap-4">
             <Link to={`/book/${provider.id}`}>
-                <Button variant="primary"><i className="fas fa-calendar-check mr-2"></i>Book Now</Button>
+                <Button variant="primary"><i className="fas fa-calendar-check mr-2"></i>Book or Request Quote</Button>
+            </Link>
+             <Link to={`/book/${provider.id}?emergency=true`}>
+                <Button variant="danger"><i className="fas fa-bolt mr-2"></i>Emergency Service</Button>
             </Link>
             <Button variant="secondary"><i className="fas fa-envelope mr-2"></i>Contact</Button>
           </div>
@@ -86,7 +130,7 @@ const ServiceProviderProfilePage: React.FC = () => {
               {provider.services.map((service: Service) => (
                 <li key={service.name} className="flex justify-between items-center">
                   <span className="text-gray-800">{service.name}</span>
-                  <span className="font-bold text-primary">from ${service.startingPrice}</span>
+                  {renderPrice(service)}
                 </li>
               ))}
             </ul>

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { getProviders } from '../services/dataService';
 import { ServiceProvider } from '../types';
 import Spinner from '../components/Spinner';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import StarRating from '../components/StarRating';
 
 const MapViewPage: React.FC = () => {
@@ -11,11 +11,16 @@ const MapViewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const category = searchParams.get('category');
+  const searchQuery = searchParams.get('q');
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const provs = await getProviders();
+        const provs = await getProviders(category || undefined, searchQuery || undefined);
         setProviders(provs);
       } catch (error) {
         console.error("Failed to fetch providers:", error);
@@ -24,14 +29,17 @@ const MapViewPage: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [category, searchQuery]);
 
   return (
-    <div className="flex flex-col md:flex-row h-[75vh] gap-4">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-200px)] gap-4">
       {/* Provider List */}
       <div className="md:w-1/3 h-full overflow-y-auto bg-white p-4 rounded-lg shadow-lg">
-        <h2 className="text-2xl font-bold mb-4">Nearby Providers</h2>
+        <h2 className="text-2xl font-bold mb-4">
+            {searchQuery ? `Results for "${searchQuery}"` : (category ? `${category} Providers` : 'Nearby Providers')}
+        </h2>
         {loading ? <Spinner /> : (
+            providers.length > 0 ? (
           <ul className="space-y-4">
             {providers.map(provider => (
               <li 
@@ -50,6 +58,12 @@ const MapViewPage: React.FC = () => {
               </li>
             ))}
           </ul>
+            ) : (
+                <div className="text-center py-10 text-gray-500">
+                    <i className="fas fa-search-location fa-3x mb-4"></i>
+                    <p>No providers found matching your criteria.</p>
+                </div>
+            )
         )}
       </div>
 
@@ -62,8 +76,8 @@ const MapViewPage: React.FC = () => {
                     key={p.id} 
                     className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${selectedProviderId === p.id ? 'z-10' : 'z-0'}`} 
                     style={{ 
-                        top: `${40 + Math.sin(index) * 25}%`, 
-                        left: `${50 + Math.cos(index) * 35}%` 
+                        top: `${40 + Math.sin(index * 0.5) * 25}%`, 
+                        left: `${50 + Math.cos(index * 0.5) * 35}%` 
                     }}
                     onClick={() => setSelectedProviderId(p.id)}
                 >
